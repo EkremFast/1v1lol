@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Timber Tycoon - Lumberjack Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+  body { background: #1e272e; color: #fff; overflow: hidden; display: flex; }
+  #gameCanvas { display: block; background: #4cd137; cursor: crosshair; }
+  
+  /* HUD */
+  #hud {
+    position: absolute; top: 15px; left: 15px; display: flex; gap: 15px; pointer-events: none;
+  }
+  .stat-box {
+    background: rgba(30, 39, 46, 0.88); padding: 10px 18px; border-radius: 10px;
+    border: 2px solid #485460; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  }
+  .stat-box span { color: #ffd32a; }
+
+  /* Controls Guide */
+  #controls {
+    position: absolute; bottom: 15px; left: 15px; background: rgba(30, 39, 46, 0.85);
+    padding: 10px 15px; border-radius: 8px; font-size: 13px; color: #d2dae2; pointer-events: none;
+  }
+
+  /* Shop & Garage Sidebar */
+  #sidebar {
+    width: 320px; height: 100vh; background: #2f3640; border-left: 3px solid #1e272e;
+    padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
+  h2 { font-size: 18px; color: #fbc531; border-bottom: 1px solid #485460; padding-bottom: 5px; margin-top: 5px; }
+  .upgrade-card {
+    background: #353b48; padding: 10px; border-radius: 8px; display: flex;
+    justify-content: space-between; align-items: center; border: 1px solid #485460;
+  }
+  .upgrade-info h4 { font-size: 14px; color: #f5f6fa; }
+  .upgrade-info p { font-size: 11px; color: #dcdde1; }
+  button {
+    background: #44bd32; color: white; border: none; padding: 8px 12px; border-radius: 6px;
+    font-weight: bold; cursor: pointer; transition: 0.15s; min-width: 75px;
+  }
+  button:hover:not(:disabled) { background: #4cd137; transform: scale(1.03); }
+  button:disabled { background: #718093; cursor: not-allowed; opacity: 0.6; }
+
+  /* Chainsaw Heat Bar */
+  #heatContainer {
+    position: absolute; top: 70px; left: 15px; width: 200px; background: rgba(0,0,0,0.7);
+    padding: 6px; border-radius: 6px; display: none;
+  }
+  #heatBar { height: 10px; width: 0%; background: #ff3f34; border-radius: 4px; transition: width 0.1s; }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="hud">
+  <div class="stat-box">Coins: $<span id="coinsText">0</span></div>
+  <div class="stat-box">Logs: <span id="logsText">0 / 10</span></div>
+  <div class="stat-box">Tool: <span id="toolText">Fists</span></div>
+  <div class="stat-box">Truck: <span id="truckText">None</span></div>
+</div>
+
+<div id="heatContainer">
+  <div style="font-size: 11px; margin-bottom: 3px;">Chainsaw Heat (Auto-cools)</div>
+  <div id="heatBar"></div>
+</div>
+
+<div id="controls">
+  <b>WASD / Arrows:</b> Move &nbsp;|&nbsp; <b>Space / Click:</b> Chop &nbsp;|&nbsp; <b>E:</b> Throw Dynamite &nbsp;|&nbsp; <b>T:</b> Toggle Truck
+</div>
+
+<div id="sidebar">
+  <h2>🛠️ Tools & Gear</h2>
+  <div class="upgrade-card">
+    <div class="upgrade-info">
+      <h4 id="toolUpgradeName">Buy Iron Axe</h4>
+      <p id="toolUpgradeDesc">3x faster chopping speed</p>
+    </div>
+    <button id="btnTool" onclick="buyTool()">$50</button>
+  </div>
+
+  <div class="upgrade-card">
+    <div class="upgrade-info">
+      <h4>Sharpness / Cooling</h4>
+      <p id="sharpDesc">Lv 1 (+Damage & Chainsaw Cooling)</p>
+    </div>
+    <button id="btnSharp" onclick="buyUpgrade('sharpness')">$40</button>
+  </div>
+
+  <div class="upgrade-card">
+    <div class="upgrade-info">
+      <h4>Log Vacuum</h4>
+      <p id="vacDesc">Lv 0 (Auto-collect nearby logs)</p>
+    </div>
+    <button id="btnVac" onclick="buyUpgrade('vacuum')">$150</button>
+  </div>
+
+  <div class="upgrade-card">
+    <div class="upgrade-info">
+      <h4>Dynamite Pack</h4>
+      <p id="dynDesc">Owned: 0 (Press E to blast trees)</p>
+    </div>
+    <button id="btnDyn" onclick="buyUpgrade('dynamite')">$100</button>
+  </div>
+
+  <h2>🎒 Character & Hauling</h2>
+  <div class="upgrade-card">
+    <div class="upgrade-info">
+      <h4>Backpack Capacity</h4>
+      <p id="bagDesc">Max 10 logs</p>
+    </div>
+    <button id="btnBag" onclick="buyUpgrade('bag')">$30</button>
+  </div>
+
+  <div class="upgrade-card">
+    <div class="upgrade-info">
+      <h4>Walk Speed</h4>
+      <p id="speedDesc">Lv 1</p>
+    </div>
+    <button id="btnSpeed" onclick="buyUpgrade('speed')">$35</button>
+  </div>
+
+  <h2>🚚 Garage (Trucks)</h2>
+  <div class="upgrade-card">
+    <div class="upgrade-info">
+      <h4 id="truckUpgradeName">Pickup Truck</h4>
+      <p id="truckUpgradeDesc">+40 Cargo & Faster Driving</p>
+    </div>
+    <button id="btnTruck" onclick="buyTruck()">$300</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width = window.innerWidth - 320;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Game State
+const state = {
+  coins: 0,
+  backpack: [],
+  maxBag: 10,
+  speed: 3.2,
+  speedLv: 1,
+  toolLv: 0, // 0: Fists, 1: Axe, 2: Chainsaw
+  sharpLv: 1,
+  vacLv: 0,
+  dynamite: 0,
+  truckLv: 0, // 0: None, 1: Pickup, 2: Heavy Logger
+  inTruck: false,
+  heat: 0,
+  overheated: false
+};
+
+const costs = {
+  tool: [50, 450, Infinity],
+  sharpness: 40,
+  vacuum: 150,
+  dynamite: 100,
+  bag: 30,
+  speed: 35,
+  truck: [300, 1200, Infinity]
+};
+
+// Player
+const player = {
+  x: 420, y: 320, r: 16, angle: 0, swingTimer: 0
+};
+
+// Buildings & Zones
+const buildings = {
+  shop: { x: 80, y: 80, w: 150, h: 110, label: "LUMBER SHOP", color: "#c23616" },
+  garage: { x: 80, y: 230, w: 150, h: 120, label: "TRUCK GARAGE", color: "#273c75" },
+  sellZone: { x: 260, y: 120, w: 130, h: 130, label: "SELL LOGS HERE", color: "#e1b12c" }
+};
+
+// Entities
+let trees = [];
+let stumps = [];
+let logs = [];
+let birds = [];
+let explosions = [];
+let floatingTexts = [];
+
+// Input
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.code === 'Space') attemptChop();
+  if (e.key.toLowerCase() === 'e') throwDynamite();
+  if (e.key.toLowerCase() === 't') toggleTruck();
+});
+window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  player.angle = Math.atan2((e.clientY - rect.top) - player.y, (e.clientX - rect.left) - player.x);
+  attemptChop();
+});
+
+// Helper: Check if spot is clear of buildings and other trees
+function isClearSpot(x, y, radius) {
+  // Keep clear of buildings + sell zone + spawn
+  if (x < 430 && y < 400) return false;
+  // Keep clear of outer fence
+  if (x < 45 || x > canvas.width - 45 || y < 45 || y > canvas.height - 95) return false;
+
+  for (let t of trees) {
+    if (Math.hypot(t.x - x, t.y - y) < t.r + radius + 18) return false;
+  }
+  for (let s of stumps) {
+    if (Math.hypot(s.x - x, s.y - y) < s.r + radius + 10) return false;
+  }
+  return true;
+}
+
+// Spawn a natural mix of Oak & Birch trees
+function spawnTree(force) {
+  if (!force && trees.length >= 42) return;
+  for (let attempts = 0; attempts < 30; attempts++) {
+    let x = 60 + Math.random() * (canvas.width - 120);
+    let y = 60 + Math.random() * (canvas.height - 160);
+    let isBirch = Math.random() < 0.45; // Natural random mix, never rainbow order
+    let r = isBirch ? 20 + Math.random() * 4 : 24 + Math.random() * 6;
+
+    if (isClearSpot(x, y, r)) {
+      trees.push({
+        x, y, r,
+        type: isBirch ? 'birch' : 'oak',
+        hp: isBirch ? 35 : 50,
+        maxHp: isBirch ? 35 : 50,
+        value: isBirch ? 14 : 10,
+        hitShake: 0,
+        canopyOffset: (Math.random() - 0.5) * 6
+      });
+      break;
+    }
+  }
+}
+
+// Initial forest generation
+for (let i = 0; i < 40; i++) spawnTree(true);
+setInterval(() => spawnTree(false), 2500);
+
+// Spawn Ambient Birds that rest on grass and stumps
+for (let i = 0; i < 8; i++) {
+  birds.push({
+    x: 200 + Math.random() * (canvas.width - 300),
+    y: 200 + Math.random() * (canvas.height - 300),
+    tx: 0, ty: 0,
+    state: 'resting', // 'resting' or 'flying'
+    timer: 60 + Math.random() * 180,
+    onStump: false,
+    wingPhase: Math.random() * Math.PI * 2,
+    color: Math.random() < 0.5 ? '#eb4d4b' : '#3498db'
+  });
+}
+
+function addFloatingText(x, y, text, color = '#fff') {
+  floatingTexts.push({ x, y, text, color, life: 55 });
+}
+
+// Chopping Logic
+function attemptChop() {
+  if (state.inTruck) return;
+  if (state.toolLv === 2 && state.overheated) {
+    addFloatingText(player.x, player.y - 25, "OVERHEATED!", "#ff3f34");
+    return;
+  }
+
+  player.swingTimer = 10;
+  let reach = state.toolLv === 2 ? 62 : 52;
+  let baseDmg = state.toolLv === 0 ? 8 : (state.toolLv === 1 ? 22 : 45);
+  let dmg = baseDmg + (state.sharpLv - 1) * 8;
+
+  if (state.toolLv === 2) {
+    state.heat = Math.min(100, state.heat + Math.max(4, 14 - state.sharpLv));
+    if (state.heat >= 100) state.overheated = true;
+  }
+
+  for (let i = trees.length - 1; i >= 0; i--) {
+    let t = trees[i];
+    let dist = Math.hypot(t.x - player.x, t.y - player.y);
+    if (dist <= t.r + reach) {
+      t.hp -= dmg;
+      t.hitShake = 6;
+      addFloatingText(t.x, t.y - 15, `-${dmg}`, "#ffd32a");
+
+      // Scare nearby resting birds
+      birds.forEach(b => {
+        if (b.state === 'resting' && Math.hypot(b.x - t.x, b.y - t.y) < 90) {
+          pickBirdTarget(b);
+        }
+      });
+
+      if (t.hp <= 0) {
+        fellTree(i);
+      }
+      if (state.toolLv !== 2) break; // Axe/fists hit 1 tree; chainsaw cleaves close trees
+    }
+  }
+}
+
+function fellTree(index) {
+  let t = trees[index];
+  trees.splice(index, 1);
+
+  // Leave realistic stump with rings
+  stumps.push({
+    x: t.x, y: t.y, r: t.r * 0.65, type: t.type, life: 1800
+  });
+
+  // Drop 3 logs with ring ends
+  let logCount = t.type === 'birch' ? 3 : 4;
+  for (let j = 0; j < logCount; j++) {
+    let angle = (Math.PI * 2 / logCount) * j + Math.random() * 0.5;
+    logs.push({
+x: t.x + Math.cos(angle) * 24,
+y: t.y + Math.sin(angle) * 24,
+angle: angle,
+type: t.type,
+value: t.value
+});
+}
+}
+function throwDynamite() {
+if (state.dynamite <= 0) {
+addFloatingText(player.x, player.y - 25, "No Dynamite!", "#ff5e57");
+return;
+}
+state.dynamite--;
+updateUI();
+let tx = player.x + Math.cos(player.angle) * 95;
+let ty = player.y + Math.sin(player.angle) * 95;
+explosions.push({ x: tx, y: ty, r: 10, maxR: 135, life: 20 });
+for (let i = trees.length - 1; i >= 0; i--) {
+if (Math.hypot(trees[i].x - tx, trees[i].y - ty) <= 135) {
+fellTree(i);
+}
+}
+}
+function toggleTruck() {
+if (state.truckLv === 0) {
+addFloatingText(player.x, player.y - 25, "Buy a truck in Garage!", "#ffdd59");
+return;
+}
+state.inTruck = !state.inTruck;
+addFloatingText(player.x, player.y - 25, state.inTruck ? "Driving Truck" : "On Foot", "#00d8d6");
+}
+function pickBirdTarget(b) {
+b.state = 'flying';
+b.onStump = false;
+// 55% chance to pick an open stump to rest on!
+if (stumps.length > 0 && Math.random() < 0.55) {
+let s = stumps[Math.floor(Math.random() * stumps.length)];
+b.tx = s.x;
+b.ty = s.y;
+b.targetStump = s;
+} else {
+b.tx = 100 + Math.random() * (canvas.width - 200);
+b.ty = 100 + Math.random() * (canvas.height - 200);
+b.targetStump = null;
+}
+}
+// Upgrades
+function getCapacity() {
+let truckBonus = state.truckLv === 1 ? 40 : (state.truckLv === 2 ? 120 : 0);
+return state.maxBag + truckBonus;
+}
+function buyTool() {
+let cost = costs.tool[state.toolLv];
+if (state.coins >= cost) {
+state.coins -= cost;
+state.toolLv++;
+updateUI();
+}
+}
+function buyTruck() {
+let cost = costs.truck[state.truckLv];
+if (state.coins >= cost) {
+state.coins -= cost;
+state.truckLv++;
+state.inTruck = true;
+updateUI();
+}
+}
+function buyUpgrade(type) {
+if (state.coins < costs[type]) return;
+state.coins -= costs[type];
+if (type === 'sharpness') {
+state.sharpLv++;
+costs.sharpness = Math.floor(costs.sharpness * 1.65);
+} else if (type === 'vacuum') {
+state.vacLv++;
+costs.vacuum = Math.floor(costs.vacuum * 1.8);
+} else if (type === 'dynamite') {
+state.dynamite += 2;
+} else if (type === 'bag') {
+state.maxBag += 10;
+costs.bag = Math.floor(costs.bag * 1.55);
+} else if (type === 'speed') {
+state.speedLv++;
+state.speed += 0.45;
+costs.speed = Math.floor(costs.speed * 1.6);
+}
+updateUI();
+}
+function updateUI() {
+document.getElementById('coinsText').innerText = state.coins;
+document.getElementById('logsText').innerText = ${state.backpack.length} / ${getCapacity()};
+const toolNames = ["Fists", "Iron Axe", "Chainsaw"];
+document.getElementById('toolText').innerText = toolNames[state.toolLv];
+document.getElementById('heatContainer').style.display = state.toolLv === 2 ? 'block' : 'none';
+const truckNames = ["None", "Pickup Truck", "Heavy Logger"];
+document.getElementById('truckText').innerText = truckNames[state.truckLv];
+// Buttons
+const btnTool = document.getElementById('btnTool');
+if (state.toolLv === 0) {
+document.getElementById('toolUpgradeName').innerText = "Buy Iron Axe";
+document.getElementById('toolUpgradeDesc').innerText = "3x faster chopping speed";
+btnTool.innerText = $${costs.tool[0]};
+btnTool.disabled = state.coins < costs.tool[0];
+} else if (state.toolLv === 1) {
+document.getElementById('toolUpgradeName').innerText = "Buy Chainsaw";
+document.getElementById('toolUpgradeDesc').innerText = "Rapid multi-tree cutting";
+btnTool.innerText = $${costs.tool[1]};
+btnTool.disabled = state.coins < costs.tool[1];
+} else {
+document.getElementById('toolUpgradeName').innerText = "Max Tool Owned";
+document.getElementById('toolUpgradeDesc').innerText = "Chainsaw unlocked!";
+btnTool.innerText = "MAX";
+btnTool.disabled = true;
+}
+const btnTruck = document.getElementById('btnTruck');
+if (state.truckLv === 0) {
+btnTruck.innerText = $${costs.truck[0]};
+btnTruck.disabled = state.coins < costs.truck[0];
+} else if (state.truckLv === 1) {
+document.getElementById('truckUpgradeName').innerText = "Heavy Logger Truck";
+document.getElementById('truckUpgradeDesc').innerText = "+120 Cargo & High Speed";
+btnTruck.innerText = $${costs.truck[1]};
+btnTruck.disabled = state.coins < costs.truck[1];
+} else {
+document.getElementById('truckUpgradeName').innerText = "Max Truck Owned";
+btnTruck.innerText = "MAX";
+btnTruck.disabled = true;
+}
+document.getElementById('sharpDesc').innerText = Lv ${state.sharpLv} (+Damage & Cooling);
+document.getElementById('btnSharp').innerText = $${costs.sharpness};
+document.getElementById('btnSharp').disabled = state.coins < costs.sharpness;
+document.getElementById('vacDesc').innerText = Lv ${state.vacLv} (Range: ${state.vacLv * 55}px);
+document.getElementById('btnVac').innerText = $${costs.vacuum};
+document.getElementById('btnVac').disabled = state.coins < costs.vacuum;
+document.getElementById('dynDesc').innerText = Owned: ${state.dynamite} (Press E);
+document.getElementById('btnDyn').innerText = $${costs.dynamite};
+document.getElementById('btnDyn').disabled = state.coins < costs.dynamite;
+document.getElementById('bagDesc').innerText = Base: ${state.maxBag} (Total: ${getCapacity()});
+document.getElementById('btnBag').innerText = $${costs.bag};
+document.getElementById('btnBag').disabled = state.coins < costs.bag;
+document.getElementById('speedDesc').innerText = Lv ${state.speedLv};
+document.getElementById('btnSpeed').innerText = $${costs.speed};
+document.getElementById('btnSpeed').disabled = state.coins < costs.speed;
+}
+// Drawing Helpers for Tree Rings
+function drawWoodRings(x, y, radius, isBirch) {
+// Bark outer rim
+ctx.fillStyle = isBirch ? '#f5f6fa' : '#5c3a21';
+ctx.beginPath();
+ctx.arc(x, y, radius, 0, Math.PI * 2);
+ctx.fill();
+if (isBirch) {
+// Birch dark bark dashes
+ctx.strokeStyle = '#2f3640';
+ctx.lineWidth = 2;
+ctx.stroke();
+}
+// Inner heartwood
+let innerR = radius * 0.84;
+ctx.fillStyle = isBirch ? '#f7d794' : '#d19a66';
+ctx.beginPath();
+ctx.arc(x, y, innerR, 0, Math.PI * 2);
+ctx.fill();
+// Concentric growth rings like IRL
+ctx.strokeStyle = isBirch ? '#cf9e57' : '#8c5828';
+ctx.lineWidth = 1.2;
+for (let r = innerR * 0.25; r < innerR; r += innerR * 0.24) {
+ctx.beginPath();
+ctx.arc(x, y, r, 0, Math.PI * 2);
+ctx.stroke();
+}
+}
+// Main Update Loop
+function update() {
+// Movement
+let dx = 0, dy = 0;
+if (keys['w'] || keys['arrowup']) dy -= 1;
+if (keys['s'] || keys['arrowdown']) dy += 1;
+if (keys['a'] || keys['arrowleft']) dx -= 1;
+if (keys['d'] || keys['arrowright']) dx += 1;
+if (dx !== 0 || dy !== 0) {
+let len = Math.hypot(dx, dy);
+dx /= len; dy /= len;
+let moveSpeed = state.inTruck ? state.speed + (state.truckLv * 1.4) : state.speed;
+player.x += dx * moveSpeed;
+player.y += dy * moveSpeed;
+player.angle = Math.atan2(dy, dx);
+}
+// Keep inside fenced main area
+player.x = Math.max(40, Math.min(canvas.width - 40, player.x));
+player.y = Math.max(40, Math.min(canvas.height - 90, player.y));
+// Chainsaw Cooling
+if (state.heat > 0) {
+state.heat = Math.max(0, state.heat - (0.35 + state.sharpLv * 0.1));
+if (state.heat === 0) state.overheated = false;
+document.getElementById('heatBar').style.width = state.heat + '%';
+}
+if (player.swingTimer > 0) player.swingTimer--;
+// Log Pickup & Vacuum
+let cap = getCapacity();
+let vacRange = 36 + state.vacLv * 55;
+for (let i = logs.length - 1; i >= 0; i--) {
+let l = logs[i];
+let d = Math.hypot(l.x - player.x, l.y - player.y);
+if (state.backpack.length < cap) {
+if (state.vacLv > 0 && d < vacRange) {
+l.x += (player.x - l.x) * 0.12;
+l.y += (player.y - l.y) * 0.12;
+}
+if (d < 34) {
+state.backpack.push(l);
+logs.splice(i, 1);
+updateUI();
+}
+}
+}
+// Sell Zone Check
+const sz = buildings.sellZone;
+if (player.x > sz.x && player.x < sz.x + sz.w && player.y > sz.y && player.y < sz.y + sz.h) {
+if (state.backpack.length > 0) {
+let total = state.backpack.reduce((sum, item) => sum + item.value, 0);
+state.coins += total;
+addFloatingText(player.x, player.y - 20, +$${total}!, "#4cd137");
+state.backpack = [];
+updateUI();
+}
+}
+// Update Birds
+birds.forEach(b => {
+if (b.state === 'resting') {
+b.timer--;
+if (b.timer <= 0) {
+pickBirdTarget(b);
+}
+} else {
+b.wingPhase += 0.35;
+let dist = Math.hypot(b.tx - b.x, b.ty - b.y);
+if (dist < 4) {
+b.x = b.tx;
+b.y = b.ty;
+b.state = 'resting';
+b.timer = 140 + Math.random() * 240;
+} else {
+b.x += ((b.tx - b.x) / dist) * 2.4;
+b.y += ((b.ty - b.y) / dist) * 2.4;
+}
+}
+});
+// Stumps decay slowly so forest refreshes
+for (let i = stumps.length - 1; i >= 0; i--) {
+stumps[i].life--;
+if (stumps[i].life <= 0) stumps.splice(i, 1);
+}
+// Explosions & Floating Text
+for (let i = explosions.length - 1; i >= 0; i--) {
+explosions[i].r += 6;
+explosions[i].life--;
+if (explosions[i].life <= 0) explosions.splice(i, 1);
+}
+for (let i = floatingTexts.length - 1; i >= 0; i--) {
+floatingTexts[i].y -= 0.7;
+floatingTexts[i].life--;
+if (floatingTexts[i].life <= 0) floatingTexts.splice(i, 1);
+}
+}
+// Render Loop
+function draw() {
+ctx.clearRect(0, 0, canvas.width, canvas.height);
+// Dirt Path around Garage, Shop & Sell Zone
+ctx.fillStyle = '#c8a97e';
+ctx.beginPath();
+ctx.roundRect(55, 55, 370, 325, 25);
+ctx.fill();
+// Sell Zone
+const sz = buildings.sellZone;
+ctx.fillStyle = 'rgba(225, 177, 44, 0.35)';
+ctx.strokeStyle = '#fbc531';
+ctx.lineWidth = 3;
+ctx.setLineDash([8, 6]);
+ctx.strokeRect(sz.x, sz.y, sz.w, sz.h);
+ctx.fillRect(sz.x, sz.y, sz.w, sz.h);
+ctx.setLineDash([]);
+ctx.fillStyle = '#fff';
+ctx.font = 'bold 13px sans-serif';
+ctx.textAlign = 'center';
+ctx.fillText("SELL ZONE", sz.x + sz.w/2, sz.y + sz.h/2 + 5);
+// Shop & Garage Buildings
+[buildings.shop, buildings.garage].forEach(b => {
+ctx.fillStyle = 'rgba(0,0,0,0.25)';
+ctx.fillRect(b.x + 6, b.y + 6, b.w, b.h);
+ctx.fillStyle = b.color;
+ctx.fillRect(b.x, b.y, b.w, b.h);
+ctx.strokeStyle = '#1e272e';
+ctx.lineWidth = 3;
+ctx.strokeRect(b.x, b.y, b.w, b.h);
+ctx.fillStyle = '#fff';
+ctx.font = 'bold 14px sans-serif';
+ctx.fillText(b.label, b.x + b.w/2, b.y + b.h/2 + 5);
+});
+// Stumps (with Realistic Circular Tree Rings!)
+stumps.forEach(s => {
+drawWoodRings(s.x, s.y, s.r, s.type === 'birch');
+});
+// Dropped Logs (Showing circular tree rings on the cut face!)
+logs.forEach(l => {
+ctx.save();
+ctx.translate(l.x, l.y);
+ctx.rotate(l.angle);
+// Log body
+ctx.fillStyle = l.type === 'birch' ? '#f5f6fa' : '#6F4E37';
+ctx.fillRect(-12, -6, 24, 12);
+if (l.type === 'birch') {
+ctx.fillStyle = '#2f3640';
+ctx.fillRect(-6, -6, 3, 5);
+ctx.fillRect(3, 0, 3, 6);
+}
+// Cut end with wood rings
+drawWoodRings(12, 0, 6.5, l.type === 'birch');
+ctx.restore();
+});
+// Vacuum Radius Indicator
+if (state.vacLv > 0) {
+ctx.strokeStyle = 'rgba(0, 216, 214, 0.25)';
+ctx.lineWidth = 2;
+ctx.beginPath();
+ctx.arc(player.x, player.y, 36 + state.vacLv * 55, 0, Math.PI * 2);
+ctx.stroke();
+}
+// Player or Truck
+ctx.save();
+ctx.translate(player.x, player.y);
+ctx.rotate(player.angle);
+if (state.inTruck) {
+// Draw Truck
+ctx.fillStyle = state.truckLv === 1 ? '#e84118' : '#8c7ae6';
+ctx.fillRect(-26, -16, 52, 32);
+ctx.fillStyle = '#2f3640'; // Windshield
+ctx.fillRect(8, -13, 10, 26);
+// Logs stacked in truck bed
+if (state.backpack.length > 0) {
+ctx.fillStyle = '#a06b35';
+ctx.fillRect(-22, -12, 26, 24);
+}
+} else {
+// Tool Swing
+if (state.toolLv > 0) {
+ctx.save();
+if (player.swingTimer > 0) ctx.rotate(0.7);
+ctx.fillStyle = state.toolLv === 1 ? '#7f8fa6' : '#fbc531';
+ctx.fillRect(10, 6, state.toolLv === 1 ? 22 : 28, 6);
+ctx.restore();
+}
+// Lumberjack Body
+ctx.fillStyle = '#e84118';
+ctx.beginPath();
+ctx.arc(0, 0, player.r, 0, Math.PI * 2);
+ctx.fill();
+ctx.strokeStyle = '#1e272e';
+ctx.lineWidth = 2;
+ctx.stroke();
+}
+ctx.restore();
+// Standing Trees (Top-down foliage + trunk peek)
+trees.forEach(t => {
+let shakeX = t.hitShake > 0 ? (Math.random() - 0.5) * 5 : 0;
+if (t.hitShake > 0) t.hitShake--;
+// Ground shadow
+ctx.fillStyle = 'rgba(0,0,0,0.18)';
+ctx.beginPath();
+ctx.arc(t.x + 6, t.y + 6, t.r + 4, 0, Math.PI * 2);
+ctx.fill();
+// Canopy
+ctx.fillStyle = t.type === 'birch' ? '#badc58' : '#218c74';
+ctx.beginPath();
+ctx.arc(t.x + shakeX, t.y, t.r + 4, 0, Math.PI * 2);
+ctx.fill();
+// Inner leaf highlight
+ctx.fillStyle = t.type === 'birch' ? '#dff9fb' : '#33d9b2';
+ctx.globalAlpha = 0.25;
+ctx.beginPath();
+ctx.arc(t.x + shakeX - 4, t.y - 4, t.r * 0.6, 0, Math.PI * 2);
+ctx.fill();
+ctx.globalAlpha = 1;
+// HP Bar if damaged
+if (t.hp < t.maxHp) {
+ctx.fillStyle = '#2f3640';
+ctx.fillRect(t.x - 18, t.y - t.r - 12, 36, 5);
+ctx.fillStyle = '#4cd137';
+ctx.fillRect(t.x - 18, t.y - t.r - 12, 36 * (t.hp / t.maxHp), 5);
+}
+});
+// Birds (Resting on grass/stumps or flying)
+birds.forEach(b => {
+ctx.save();
+ctx.translate(b.x, b.y);
+ctx.fillStyle = b.color;
+// Body
+ctx.beginPath();
+ctx.ellipse(0, 0, 6, 4, 0, 0, Math.PI * 2);
+ctx.fill();
+// Wings
+if (b.state === 'flying') {
+let flap = Math.sin(b.wingPhase) * 7;
+ctx.strokeStyle = '#fff';
+ctx.lineWidth = 2;
+ctx.beginPath();
+ctx.moveTo(0, -flap);
+ctx.lineTo(0, flap);
+ctx.stroke();
+}
+ctx.restore();
+});
+// Perimeter Fence & Locked Future Expansion Gate at Bottom
+ctx.fillStyle = '#7f5539';
+ctx.fillRect(0, 0, canvas.width, 20);
+ctx.fillRect(0, 0, 20, canvas.height);
+ctx.fillRect(canvas.width - 20, 0, 20, canvas.height);
+// Bottom Expansion Barrier
+ctx.fillStyle = '#582f0e';
+ctx.fillRect(0, canvas.height - 65, canvas.width, 65);
+ctx.fillStyle = '#ffd32a';
+ctx.font = 'bold 15px sans-serif';
+ctx.fillText("🚧 NEXT BIOME EXPANSION (SAVED FOR LATER) 🚧", canvas.width / 2, canvas.height - 28);
+// Explosions
+explosions.forEach(ex => {
+ctx.fillStyle = rgba(255, 107, 53, ${ex.life / 20});
+ctx.beginPath();
+ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI * 2);
+ctx.fill();
+});
+// Floating Text
+floatingTexts.forEach(ft => {
+ctx.fillStyle = ft.color;
+ctx.font = 'bold 14px sans-serif';
+ctx.fillText(ft.text, ft.x, ft.y);
+});
+}
+function loop() {
+update();
+draw();
+requestAnimationFrame(loop);
+}
+updateUI();
+loop();
+
+
+
+<FollowUp>
+Once you test this out, let me know if you want to add:
+* **The next biome** beyond the bottom fence (like Pinewood, Frost, or Autumn Wood)
+* **Special rare trees** (Golden, Crystal, or Frost trees)
+* **Character classes** (like Claw Man with dash abilities)
+* **Sound effects** for chopping, birds chirping, and cash registers
+</FollowUp>
